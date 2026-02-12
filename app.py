@@ -1,6 +1,6 @@
 """
 EMA40S Statistics Assessment Generator
-Streamlit Application
+Streamlit Application - UPDATED with all generators
 """
 
 import streamlit as st
@@ -16,6 +16,8 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from data_manager import DataManager
 from generators.mean_median_mode import MeanMedianModeGenerator
 from generators.trimmed_mean import TrimmedMeanGenerator
+from generators.weighted_mean import WeightedMeanGenerator
+from generators.percentile_rank import PercentileRankGenerator
 from question_models import Assessment
 
 # Page config
@@ -48,7 +50,6 @@ with st.sidebar:
             type=['xlsx']
         )
         if uploaded_file:
-            # Save temporarily
             temp_path = "temp_lookup_tables.xlsx"
             with open(temp_path, 'wb') as f:
                 f.write(uploaded_file.read())
@@ -56,7 +57,7 @@ with st.sidebar:
             st.success("✓ Custom data loaded")
         else:
             data_manager = DataManager("data/WorksheetMergeMasterSourceFile.xlsx")
-            st.info("Using fallback data")
+            st.info("Using default data from repository")
     else:
         data_manager = DataManager("data/WorksheetMergeMasterSourceFile.xlsx")
     
@@ -65,8 +66,7 @@ with st.sidebar:
     # Learning Outcomes
     st.subheader("Learning Outcomes")
     outcome_s1 = st.checkbox("12E5.S.1 - Measures of Central Tendency", value=True)
-    outcome_s2 = st.checkbox("12E5.S.2 - Percentile Rank", value=False, disabled=True)
-    st.caption("⚠️ Percentile Rank coming soon")
+    outcome_s2 = st.checkbox("12E5.S.2 - Percentile Rank", value=True)
     
     selected_outcomes = []
     if outcome_s1:
@@ -83,7 +83,7 @@ with st.sidebar:
         "Mean/Median/Mode",
         min_value=0,
         max_value=10,
-        value=3,
+        value=2,
         help="Basic calculations (1-2 marks each)"
     )
     
@@ -99,18 +99,24 @@ with st.sidebar:
         "Weighted Mean",
         min_value=0,
         max_value=5,
-        value=0,
-        disabled=True,
-        help="Coming soon"
+        value=2,
+        help="Course grades or frequency data (2 marks each)"
     )
     
-    num_percentile = st.slider(
-        "Percentile Rank",
+    num_percentile_calc = st.slider(
+        "Percentile Rank (Calculation)",
         min_value=0,
         max_value=5,
-        value=0,
-        disabled=True,
-        help="Coming soon"
+        value=2,
+        help="Calculate PR using formula (2 marks each)"
+    )
+    
+    num_percentile_concept = st.slider(
+        "Percentile Rank (Conceptual)",
+        min_value=0,
+        max_value=3,
+        value=1,
+        help="Understanding percentile vs percent (1 mark each)"
     )
     
     st.markdown("---")
@@ -152,7 +158,7 @@ with col1:
     if st.button("🎲 Generate New Test", type="primary", use_container_width=True):
         if not selected_outcomes:
             st.error("Please select at least one learning outcome")
-        elif num_mmm + num_trimmed == 0:
+        elif (num_mmm + num_trimmed + num_weighted + num_percentile_calc + num_percentile_concept) == 0:
             st.error("Please select at least one question type")
         else:
             with st.spinner("Generating your test..."):
@@ -167,21 +173,45 @@ with col1:
                 # Initialize generators
                 mmm_gen = MeanMedianModeGenerator(data_manager)
                 trimmed_gen = TrimmedMeanGenerator(data_manager)
+                weighted_gen = WeightedMeanGenerator(data_manager)
+                percentile_gen = PercentileRankGenerator(data_manager)
                 
                 # Generate questions
                 questions = []
                 
+                # Mean/Median/Mode
                 for i in range(num_mmm):
                     diff = random.choice(difficulty_range)
                     marks = random.choice([1, 2])
                     q = mmm_gen.generate_question(difficulty=diff, marks=marks)
                     questions.append(q)
                 
+                # Trimmed Mean
                 for i in range(num_trimmed):
                     diff = random.choice(difficulty_range)
                     q = trimmed_gen.generate_question(difficulty=diff, marks=2)
                     questions.append(q)
                 
+                # Weighted Mean
+                for i in range(num_weighted):
+                    diff = random.choice(difficulty_range)
+                    qtype = random.choice(["percentage", "frequency"])
+                    q = weighted_gen.generate_question(difficulty=diff, question_type=qtype)
+                    questions.append(q)
+                
+                # Percentile Rank (Calculation)
+                for i in range(num_percentile_calc):
+                    diff = random.choice(difficulty_range)
+                    q = percentile_gen.generate_question(difficulty=diff, question_type="calculation")
+                    questions.append(q)
+                
+                # Percentile Rank (Conceptual)
+                for i in range(num_percentile_concept):
+                    diff = random.choice([1, 2])  # Conceptual are easier
+                    q = percentile_gen.generate_question(difficulty=diff, question_type="conceptual")
+                    questions.append(q)
+                
+                # Shuffle questions
                 random.shuffle(questions)
                 
                 # Create assessment
@@ -279,9 +309,15 @@ with col2:
         
         st.subheader("Export")
         st.info("📄 PDF/DOCX export coming soon!")
+        
+        # Show version for reproducibility
+        st.caption(f"Version: {test.version_id}")
+        if use_seed:
+            st.caption(f"Seed: {seed_value} (use to regenerate)")
     
     else:
         st.info("Generate a test to see statistics")
 
 st.markdown("---")
-st.caption("EMA40S Test Generator v0.1 | Manitoba Education")
+st.caption("EMA40S Test Generator v0.2.0 | Manitoba Education")
+st.caption("🌐 [GitHub](https://github.com/milesmacfarlane/TestGenerator) | 📧 Feedback")
