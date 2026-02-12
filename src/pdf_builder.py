@@ -1,5 +1,5 @@
 """
-PDF Builder for EMA40S Tests
+PDF Builder for EMA40S Tests - FIXED (no duplicate context)
 Creates professional test documents matching Manitoba provincial exam format
 """
 
@@ -61,16 +61,7 @@ class TestPDFBuilder:
             textColor=colors.HexColor('#2c3e50')
         ))
         
-        # Context style
-        self.styles.add(ParagraphStyle(
-            name='Context',
-            parent=self.styles['Normal'],
-            fontSize=10,
-            spaceAfter=6,
-            leftIndent=20
-        ))
-        
-        # Question text style
+        # Question text style (no longer separate context style)
         self.styles.add(ParagraphStyle(
             name='QuestionText',
             parent=self.styles['Normal'],
@@ -292,7 +283,7 @@ class TestPDFBuilder:
         return elements
     
     def _build_question(self, num: int, question: Question, show_answers: bool):
-        """Build a single question"""
+        """Build a single question - FIXED to not duplicate context"""
         elements = []
         
         # Question number and marks
@@ -302,14 +293,8 @@ class TestPDFBuilder:
         
         elements.append(Paragraph(header, self.styles['QuestionNumber']))
         
-        # Context
-        if question.context:
-            elements.append(Paragraph(
-                f"<i>{question.context}</i>",
-                self.styles['Context']
-            ))
-        
-        # Question text (preserve formatting)
+        # DON'T print context separately - it's already in question_text
+        # Just print the question text which includes the context
         question_lines = question.question_text.split('\n')
         for line in question_lines:
             if line.strip():
