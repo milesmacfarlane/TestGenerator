@@ -9,6 +9,16 @@ from pathlib import Path
 import random
 from datetime import datetime
 
+
+
+def apply_custom_style():
+    # If your style.css is in the same folder in your GitHub repo:
+    with open("style.css") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+
+
+
 # Add src directory to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
