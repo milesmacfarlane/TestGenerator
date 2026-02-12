@@ -1,6 +1,6 @@
 """
 EMA40S Statistics Assessment Generator
-Streamlit Application - UPDATED with all generators
+Streamlit Application - FIXED IMPORTS
 """
 
 import streamlit as st
@@ -14,11 +14,24 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 # Import our modules
 from data_manager import DataManager
+from question_models import Assessment
+
+# Import generators
 from generators.mean_median_mode import MeanMedianModeGenerator
 from generators.trimmed_mean import TrimmedMeanGenerator
-from generators.weighted_mean import WeightedMeanGenerator
-from generators.percentile_rank import PercentileRankGenerator
-from question_models import Assessment
+
+# Try to import new generators, fall back if not available
+try:
+    from generators.weighted_mean import WeightedMeanGenerator
+    HAS_WEIGHTED = True
+except ImportError:
+    HAS_WEIGHTED = False
+
+try:
+    from generators.percentile_rank import PercentileRankGenerator
+    HAS_PERCENTILE = True
+except ImportError:
+    HAS_PERCENTILE = False
 
 # Page config
 st.set_page_config(
@@ -66,12 +79,14 @@ with st.sidebar:
     # Learning Outcomes
     st.subheader("Learning Outcomes")
     outcome_s1 = st.checkbox("12E5.S.1 - Measures of Central Tendency", value=True)
-    outcome_s2 = st.checkbox("12E5.S.2 - Percentile Rank", value=True)
+    outcome_s2 = st.checkbox("12E5.S.2 - Percentile Rank", value=HAS_PERCENTILE, disabled=not HAS_PERCENTILE)
+    if not HAS_PERCENTILE:
+        st.caption("⚠️ Percentile Rank coming soon")
     
     selected_outcomes = []
     if outcome_s1:
         selected_outcomes.append("12E5.S.1")
-    if outcome_s2:
+    if outcome_s2 and HAS_PERCENTILE:
         selected_outcomes.append("12E5.S.2")
     
     st.markdown("---")
@@ -99,24 +114,27 @@ with st.sidebar:
         "Weighted Mean",
         min_value=0,
         max_value=5,
-        value=2,
-        help="Course grades or frequency data (2 marks each)"
+        value=2 if HAS_WEIGHTED else 0,
+        disabled=not HAS_WEIGHTED,
+        help="Course grades or frequency data (2 marks each)" if HAS_WEIGHTED else "Coming soon"
     )
     
     num_percentile_calc = st.slider(
         "Percentile Rank (Calculation)",
         min_value=0,
         max_value=5,
-        value=2,
-        help="Calculate PR using formula (2 marks each)"
+        value=2 if HAS_PERCENTILE else 0,
+        disabled=not HAS_PERCENTILE,
+        help="Calculate PR using formula (2 marks each)" if HAS_PERCENTILE else "Coming soon"
     )
     
     num_percentile_concept = st.slider(
         "Percentile Rank (Conceptual)",
         min_value=0,
         max_value=3,
-        value=1,
-        help="Understanding percentile vs percent (1 mark each)"
+        value=1 if HAS_PERCENTILE else 0,
+        disabled=not HAS_PERCENTILE,
+        help="Understanding percentile vs percent (1 mark each)" if HAS_PERCENTILE else "Coming soon"
     )
     
     st.markdown("---")
@@ -170,11 +188,15 @@ with col1:
                 else:
                     difficulty_range = [3, 4, 5]
                 
-                # Initialize generators
+                # Initialize available generators
                 mmm_gen = MeanMedianModeGenerator(data_manager)
                 trimmed_gen = TrimmedMeanGenerator(data_manager)
-                weighted_gen = WeightedMeanGenerator(data_manager)
-                percentile_gen = PercentileRankGenerator(data_manager)
+                
+                if HAS_WEIGHTED:
+                    weighted_gen = WeightedMeanGenerator(data_manager)
+                
+                if HAS_PERCENTILE:
+                    percentile_gen = PercentileRankGenerator(data_manager)
                 
                 # Generate questions
                 questions = []
@@ -192,24 +214,25 @@ with col1:
                     q = trimmed_gen.generate_question(difficulty=diff, marks=2)
                     questions.append(q)
                 
-                # Weighted Mean
-                for i in range(num_weighted):
-                    diff = random.choice(difficulty_range)
-                    qtype = random.choice(["percentage", "frequency"])
-                    q = weighted_gen.generate_question(difficulty=diff, question_type=qtype)
-                    questions.append(q)
+                # Weighted Mean (if available)
+                if HAS_WEIGHTED:
+                    for i in range(num_weighted):
+                        diff = random.choice(difficulty_range)
+                        qtype = random.choice(["percentage", "frequency"])
+                        q = weighted_gen.generate_question(difficulty=diff, question_type=qtype)
+                        questions.append(q)
                 
-                # Percentile Rank (Calculation)
-                for i in range(num_percentile_calc):
-                    diff = random.choice(difficulty_range)
-                    q = percentile_gen.generate_question(difficulty=diff, question_type="calculation")
-                    questions.append(q)
-                
-                # Percentile Rank (Conceptual)
-                for i in range(num_percentile_concept):
-                    diff = random.choice([1, 2])  # Conceptual are easier
-                    q = percentile_gen.generate_question(difficulty=diff, question_type="conceptual")
-                    questions.append(q)
+                # Percentile Rank (if available)
+                if HAS_PERCENTILE:
+                    for i in range(num_percentile_calc):
+                        diff = random.choice(difficulty_range)
+                        q = percentile_gen.generate_question(difficulty=diff, question_type="calculation")
+                        questions.append(q)
+                    
+                    for i in range(num_percentile_concept):
+                        diff = random.choice([1, 2])
+                        q = percentile_gen.generate_question(difficulty=diff, question_type="conceptual")
+                        questions.append(q)
                 
                 # Shuffle questions
                 random.shuffle(questions)
@@ -314,10 +337,19 @@ with col2:
         st.caption(f"Version: {test.version_id}")
         if use_seed:
             st.caption(f"Seed: {seed_value} (use to regenerate)")
+        
+        # Show feature status
+        st.markdown("---")
+        st.caption("**Features:**")
+        st.caption(f"✅ Mean/Median/Mode")
+        st.caption(f"✅ Trimmed Mean")
+        st.caption(f"{'✅' if HAS_WEIGHTED else '⏳'} Weighted Mean")
+        st.caption(f"{'✅' if HAS_PERCENTILE else '⏳'} Percentile Rank")
     
     else:
         st.info("Generate a test to see statistics")
 
 st.markdown("---")
-st.caption("EMA40S Test Generator v0.2.0 | Manitoba Education")
+version = "0.2.0" if (HAS_WEIGHTED and HAS_PERCENTILE) else "0.1.0"
+st.caption(f"EMA40S Test Generator v{version} | Manitoba Education")
 st.caption("🌐 [GitHub](https://github.com/milesmacfarlane/TestGenerator) | 📧 Feedback")
