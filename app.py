@@ -1,6 +1,6 @@
 """
 EMA40S Statistics Assessment Generator
-Streamlit Application - WITH PDF EXPORT
+Streamlit Application - WITH QUESTION LOCKING & RE-ROLL
 """
 
 import streamlit as st
@@ -50,6 +50,10 @@ st.set_page_config(
 # Initialize session state
 if 'test' not in st.session_state:
     st.session_state.test = None
+if 'locked_questions' not in st.session_state:
+    st.session_state.locked_questions = set()
+if 'generation_params' not in st.session_state:
+    st.session_state.generation_params = None
 
 # Title
 st.title("📊 EMA40S Test Generator")
@@ -169,10 +173,68 @@ with st.sidebar:
     use_seed = st.checkbox("Use custom seed")
     if use_seed:
         seed_value = st.number_input("Seed", value=12345, min_value=1)
-        random.seed(seed_value)
     else:
         seed_value = random.randint(1, 999999)
-        random.seed(seed_value)
+
+
+def generate_questions(data_manager, difficulty_range, num_mmm, num_trimmed, 
+                       num_weighted, num_percentile_calc, num_percentile_concept):
+    """Generate all questions based on parameters"""
+    
+    # Set seed
+    random.seed(seed_value)
+    
+    # Initialize available generators
+    mmm_gen = MeanMedianModeGenerator(data_manager)
+    trimmed_gen = TrimmedMeanGenerator(data_manager)
+    
+    if HAS_WEIGHTED:
+        weighted_gen = WeightedMeanGenerator(data_manager)
+    
+    if HAS_PERCENTILE:
+        percentile_gen = PercentileRankGenerator(data_manager)
+    
+    # Generate questions
+    questions = []
+    
+    # Mean/Median/Mode
+    for i in range(num_mmm):
+        diff = random.choice(difficulty_range)
+        marks = random.choice([1, 2])
+        q = mmm_gen.generate_question(difficulty=diff, marks=marks)
+        questions.append(q)
+    
+    # Trimmed Mean
+    for i in range(num_trimmed):
+        diff = random.choice(difficulty_range)
+        q = trimmed_gen.generate_question(difficulty=diff, marks=2)
+        questions.append(q)
+    
+    # Weighted Mean (if available)
+    if HAS_WEIGHTED:
+        for i in range(num_weighted):
+            diff = random.choice(difficulty_range)
+            qtype = random.choice(["percentage", "frequency"])
+            q = weighted_gen.generate_question(difficulty=diff, question_type=qtype)
+            questions.append(q)
+    
+    # Percentile Rank (if available)
+    if HAS_PERCENTILE:
+        for i in range(num_percentile_calc):
+            diff = random.choice(difficulty_range)
+            q = percentile_gen.generate_question(difficulty=diff, question_type="calculation")
+            questions.append(q)
+        
+        for i in range(num_percentile_concept):
+            diff = random.choice([1, 2])
+            q = percentile_gen.generate_question(difficulty=diff, question_type="conceptual")
+            questions.append(q)
+    
+    # Shuffle questions
+    random.shuffle(questions)
+    
+    return questions
+
 
 # Main content
 col1, col2 = st.columns([2, 1])
@@ -180,6 +242,7 @@ col1, col2 = st.columns([2, 1])
 with col1:
     st.header("Generate Test")
     
+    # Generate new test button
     if st.button("🎲 Generate New Test", type="primary", use_container_width=True):
         if not selected_outcomes:
             st.error("Please select at least one learning outcome")
@@ -195,54 +258,21 @@ with col1:
                 else:
                     difficulty_range = [3, 4, 5]
                 
-                # Initialize available generators
-                mmm_gen = MeanMedianModeGenerator(data_manager)
-                trimmed_gen = TrimmedMeanGenerator(data_manager)
-                
-                if HAS_WEIGHTED:
-                    weighted_gen = WeightedMeanGenerator(data_manager)
-                
-                if HAS_PERCENTILE:
-                    percentile_gen = PercentileRankGenerator(data_manager)
+                # Save generation parameters for re-rolling
+                st.session_state.generation_params = {
+                    'difficulty_range': difficulty_range,
+                    'num_mmm': num_mmm,
+                    'num_trimmed': num_trimmed,
+                    'num_weighted': num_weighted,
+                    'num_percentile_calc': num_percentile_calc,
+                    'num_percentile_concept': num_percentile_concept
+                }
                 
                 # Generate questions
-                questions = []
-                
-                # Mean/Median/Mode
-                for i in range(num_mmm):
-                    diff = random.choice(difficulty_range)
-                    marks = random.choice([1, 2])
-                    q = mmm_gen.generate_question(difficulty=diff, marks=marks)
-                    questions.append(q)
-                
-                # Trimmed Mean
-                for i in range(num_trimmed):
-                    diff = random.choice(difficulty_range)
-                    q = trimmed_gen.generate_question(difficulty=diff, marks=2)
-                    questions.append(q)
-                
-                # Weighted Mean (if available)
-                if HAS_WEIGHTED:
-                    for i in range(num_weighted):
-                        diff = random.choice(difficulty_range)
-                        qtype = random.choice(["percentage", "frequency"])
-                        q = weighted_gen.generate_question(difficulty=diff, question_type=qtype)
-                        questions.append(q)
-                
-                # Percentile Rank (if available)
-                if HAS_PERCENTILE:
-                    for i in range(num_percentile_calc):
-                        diff = random.choice(difficulty_range)
-                        q = percentile_gen.generate_question(difficulty=diff, question_type="calculation")
-                        questions.append(q)
-                    
-                    for i in range(num_percentile_concept):
-                        diff = random.choice([1, 2])
-                        q = percentile_gen.generate_question(difficulty=diff, question_type="conceptual")
-                        questions.append(q)
-                
-                # Shuffle questions
-                random.shuffle(questions)
+                questions = generate_questions(
+                    data_manager, difficulty_range, num_mmm, num_trimmed,
+                    num_weighted, num_percentile_calc, num_percentile_concept
+                )
                 
                 # Create assessment
                 version_id = datetime.now().strftime("%Y%m%d") + f"-{seed_value}"
@@ -259,8 +289,58 @@ with col1:
                 )
                 
                 st.session_state.test = test
+                st.session_state.locked_questions = set()  # Reset locks
                 st.success(f"✓ Generated test with {len(questions)} questions!")
                 st.rerun()
+    
+    # Re-roll unlocked questions button
+    if st.session_state.test and st.session_state.generation_params:
+        num_locked = len(st.session_state.locked_questions)
+        num_unlocked = len(st.session_state.test.questions) - num_locked
+        
+        if num_unlocked > 0:
+            if st.button(f"🔄 Re-roll {num_unlocked} Unlocked Question{'s' if num_unlocked != 1 else ''}", 
+                        use_container_width=True):
+                with st.spinner(f"Re-rolling {num_unlocked} questions..."):
+                    # Get locked questions
+                    locked_questions = [q for i, q in enumerate(st.session_state.test.questions) 
+                                       if i in st.session_state.locked_questions]
+                    
+                    # Calculate how many new questions we need
+                    total_needed = len(st.session_state.test.questions)
+                    num_to_generate = total_needed - len(locked_questions)
+                    
+                    # Generate new questions
+                    params = st.session_state.generation_params
+                    
+                    # Generate MORE questions than needed so we can shuffle and pick
+                    all_new_questions = generate_questions(
+                        data_manager,
+                        params['difficulty_range'],
+                        params['num_mmm'],
+                        params['num_trimmed'],
+                        params['num_weighted'],
+                        params['num_percentile_calc'],
+                        params['num_percentile_concept']
+                    )
+                    
+                    # Pick the number we need
+                    new_questions = all_new_questions[:num_to_generate]
+                    
+                    # Combine locked and new questions
+                    all_questions = locked_questions + new_questions
+                    
+                    # Shuffle everything
+                    random.shuffle(all_questions)
+                    
+                    # Update test
+                    st.session_state.test.questions = all_questions
+                    
+                    # Reset locked indices (questions moved)
+                    st.session_state.locked_questions = set()
+                    
+                    st.success(f"✓ Re-rolled {num_to_generate} questions!")
+                    st.rerun()
     
     # Display test
     if st.session_state.test:
@@ -269,40 +349,68 @@ with col1:
         st.markdown("---")
         st.subheader("Test Preview")
         
-        st.markdown(f"""
+        # Show lock/unlock controls
+        if len(test.questions) > 0:
+            col_a, col_b = st.columns([3, 1])
+            with col_a:
+                st.markdown(f"""
 **Test Information:**
 - Version: {test.version_id}
-- Questions: {len(test.questions)}
+- Questions: {len(test.questions)} ({len(st.session_state.locked_questions)} 🔒 locked)
 - Total Marks: {test.total_marks}
 - Estimated Time: {test.estimated_time_minutes} minutes
-        """)
+                """)
+            with col_b:
+                if st.button("🔓 Unlock All"):
+                    st.session_state.locked_questions = set()
+                    st.rerun()
         
         st.markdown("---")
         
+        # Display questions with lock checkboxes
         for i, q in enumerate(test.questions, 1):
-            with st.expander(f"**Question {i}** {q.get_marks_display()}" + 
-                           (f" - {q.get_outcomes_display()}" if show_outcomes else "")):
+            # Lock checkbox in the expander header
+            col_lock, col_question = st.columns([0.5, 9.5])
+            
+            with col_lock:
+                is_locked = st.checkbox(
+                    "🔒",
+                    key=f"lock_{i}",
+                    value=(i-1) in st.session_state.locked_questions,
+                    help="Lock this question (won't change when re-rolling)"
+                )
                 
-                st.markdown(f"**Context:** {q.context}")
-                st.markdown(f"**Question:**")
-                st.text(q.question_text)
-                
-                if include_work_space:
-                    st.markdown("*[Space for student work]*")
-                
-                if include_answer_key:
-                    st.markdown("---")
-                    st.markdown("**Answer Key:**")
+                # Update locked set
+                if is_locked:
+                    st.session_state.locked_questions.add(i-1)
+                else:
+                    st.session_state.locked_questions.discard(i-1)
+            
+            with col_question:
+                lock_icon = "🔒 " if is_locked else ""
+                with st.expander(f"{lock_icon}**Question {i}** {q.get_marks_display()}" + 
+                               (f" - {q.get_outcomes_display()}" if show_outcomes else "")):
                     
-                    if q.parts:
-                        for part in q.parts:
-                            st.markdown(f"**{part.letter})** {part.answer}")
-                    else:
-                        st.markdown(f"**Answer:** {q.answer}")
+                    st.markdown(f"**Context:** {q.context}")
+                    st.markdown(f"**Question:**")
+                    st.text(q.question_text)
                     
-                    with st.expander("Show solution steps"):
-                        for step in q.solution_steps:
-                            st.text(step)
+                    if include_work_space:
+                        st.markdown("*[Space for student work]*")
+                    
+                    if include_answer_key:
+                        st.markdown("---")
+                        st.markdown("**Answer Key:**")
+                        
+                        if q.parts:
+                            for part in q.parts:
+                                st.markdown(f"**{part.letter})** {part.answer}")
+                        else:
+                            st.markdown(f"**Answer:** {q.answer}")
+                        
+                        with st.expander("Show solution steps"):
+                            for step in q.solution_steps:
+                                st.text(step)
 
 with col2:
     st.header("Statistics")
@@ -313,6 +421,10 @@ with col2:
         st.metric("Questions", len(test.questions))
         st.metric("Total Marks", test.total_marks)
         st.metric("Est. Time", f"{test.estimated_time_minutes} min")
+        
+        # Show lock status
+        num_locked = len(st.session_state.locked_questions)
+        st.metric("🔒 Locked", num_locked)
         
         st.markdown("---")
         
@@ -389,16 +501,10 @@ with col2:
         
         st.markdown("---")
         
-        # DOCX Export (coming soon)
-        st.markdown("**📝 Word Export**")
-        st.info("Coming soon!")
-        
-        st.markdown("---")
-        
         # Show version for reproducibility
         st.caption(f"Version: {test.version_id}")
         if use_seed:
-            st.caption(f"Seed: {seed_value} (use to regenerate)")
+            st.caption(f"Seed: {seed_value}")
         
         # Show feature status
         st.markdown("---")
@@ -408,9 +514,22 @@ with col2:
         st.caption(f"{'✅' if HAS_WEIGHTED else '⏳'} Weighted Mean")
         st.caption(f"{'✅' if HAS_PERCENTILE else '⏳'} Percentile Rank")
         st.caption(f"{'✅' if HAS_PDF else '⏳'} PDF Export")
+        st.caption(f"✅ Question Locking 🆕")
     
     else:
         st.info("Generate a test to see statistics")
+        
+        # Help text about locking feature
+        st.markdown("---")
+        st.subheader("💡 Question Locking")
+        st.markdown("""
+**Lock questions you like, re-roll the rest!**
+
+1. Generate a test
+2. Check 🔒 on questions you want to keep
+3. Click "🔄 Re-roll" to regenerate unlocked questions
+4. Perfect your test!
+        """)
 
 st.markdown("---")
 version = "0.3.0" if HAS_PDF else ("0.2.0" if (HAS_WEIGHTED and HAS_PERCENTILE) else "0.1.0")
