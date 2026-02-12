@@ -1,6 +1,6 @@
 """
 EMA40S Statistics Assessment Generator
-Streamlit Application - FIXED IMPORTS
+Streamlit Application - WITH PDF EXPORT
 """
 
 import streamlit as st
@@ -20,7 +20,7 @@ from question_models import Assessment
 from generators.mean_median_mode import MeanMedianModeGenerator
 from generators.trimmed_mean import TrimmedMeanGenerator
 
-# Try to import new generators, fall back if not available
+# Try to import new generators
 try:
     from generators.weighted_mean import WeightedMeanGenerator
     HAS_WEIGHTED = True
@@ -32,6 +32,13 @@ try:
     HAS_PERCENTILE = True
 except ImportError:
     HAS_PERCENTILE = False
+
+# Try to import PDF builder
+try:
+    from pdf_builder import TestPDFBuilder
+    HAS_PDF = True
+except ImportError:
+    HAS_PDF = False
 
 # Page config
 st.set_page_config(
@@ -331,7 +338,62 @@ with col2:
         st.markdown("---")
         
         st.subheader("Export")
-        st.info("📄 PDF/DOCX export coming soon!")
+        
+        # PDF Export
+        if HAS_PDF:
+            st.markdown("**📄 PDF Export**")
+            
+            col_student, col_teacher = st.columns(2)
+            
+            with col_student:
+                if st.button("📥 Student Copy", use_container_width=True):
+                    with st.spinner("Generating PDF..."):
+                        try:
+                            pdf_builder = TestPDFBuilder()
+                            pdf_bytes = pdf_builder.build_student_test(test)
+                            
+                            filename = f"EMA40S_Test_{test.version_id}_Student.pdf"
+                            
+                            st.download_button(
+                                label="⬇️ Download Student PDF",
+                                data=pdf_bytes,
+                                file_name=filename,
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                            st.success("✓ PDF ready!")
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+            
+            with col_teacher:
+                if st.button("📥 Teacher Copy", use_container_width=True):
+                    with st.spinner("Generating PDF..."):
+                        try:
+                            pdf_builder = TestPDFBuilder()
+                            pdf_bytes = pdf_builder.build_teacher_test(test)
+                            
+                            filename = f"EMA40S_Test_{test.version_id}_Teacher.pdf"
+                            
+                            st.download_button(
+                                label="⬇️ Download Teacher PDF",
+                                data=pdf_bytes,
+                                file_name=filename,
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                            st.success("✓ PDF ready!")
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+        else:
+            st.info("📄 PDF export: Upload pdf_builder.py to enable")
+        
+        st.markdown("---")
+        
+        # DOCX Export (coming soon)
+        st.markdown("**📝 Word Export**")
+        st.info("Coming soon!")
+        
+        st.markdown("---")
         
         # Show version for reproducibility
         st.caption(f"Version: {test.version_id}")
@@ -345,11 +407,12 @@ with col2:
         st.caption(f"✅ Trimmed Mean")
         st.caption(f"{'✅' if HAS_WEIGHTED else '⏳'} Weighted Mean")
         st.caption(f"{'✅' if HAS_PERCENTILE else '⏳'} Percentile Rank")
+        st.caption(f"{'✅' if HAS_PDF else '⏳'} PDF Export")
     
     else:
         st.info("Generate a test to see statistics")
 
 st.markdown("---")
-version = "0.2.0" if (HAS_WEIGHTED and HAS_PERCENTILE) else "0.1.0"
+version = "0.3.0" if HAS_PDF else ("0.2.0" if (HAS_WEIGHTED and HAS_PERCENTILE) else "0.1.0")
 st.caption(f"EMA40S Test Generator v{version} | Manitoba Education")
 st.caption("🌐 [GitHub](https://github.com/milesmacfarlane/TestGenerator) | 📧 Feedback")
