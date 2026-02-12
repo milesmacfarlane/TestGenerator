@@ -1,5 +1,5 @@
 """
-Percentile Rank Generator
+Percentile Rank Generator - UPDATED WITH PROPER FORMATTING
 Generates questions for outcome 12E5.S.2
 """
 
@@ -15,43 +15,43 @@ from data_manager import DataManager
 
 
 class PercentileRankGenerator:
-    """
-    Generate percentile rank questions
-    
-    Provincial Exam Patterns:
-    - Question 37 (1 mark): Conceptual understanding
-    - Question 38 (2 marks): Calculate PR using formula
-    
-    Formula: PR = (b/n) × 100
-    """
+    """Generate percentile rank questions with proper answer formatting"""
     
     CALCULATION_CONTEXTS = [
         {
             "id": "credit_scores",
             "template": "Financial institutions use credit scores to decide whether people qualify for loans. Below is a list of credit scores for people applying for a bank loan.",
             "value_range": (600, 850),
-            "dataset_size": 20
+            "dataset_size": 20,
+            "unit": "",
+            "value_name": "score"
         },
         {
             "id": "test_scores",
             "template": "{name} teaches a class of {n} students. The test scores are shown below.",
             "uses": ["name"],
             "value_range": (50, 100),
-            "dataset_size": (15, 25)
+            "dataset_size": (15, 25),
+            "unit": "%",
+            "value_name": "score"
         },
         {
             "id": "property_values",
-            "template": "A real estate agent compiled home prices in {city}. The prices (in thousands) are shown below.",
+            "template": "A real estate agent compiled home prices in {city}. The prices (in thousands of dollars) are shown below.",
             "uses": ["city"],
             "value_range": (200, 800),
-            "dataset_size": 20
+            "dataset_size": 20,
+            "unit": "k",  # Thousands
+            "value_name": "price"
         },
         {
             "id": "produce_weights",
             "template": "{name} is a farmer who grows produce. The weights (in grams) of items from new plants are shown below.",
             "uses": ["name"],
             "value_range": (90, 180),
-            "dataset_size": (12, 18)
+            "dataset_size": (12, 18),
+            "unit": "g",
+            "value_name": "weight"
         }
     ]
     
@@ -73,66 +73,63 @@ class PercentileRankGenerator:
         self.calc = StatisticsCalculator()
     
     def generate_question(self, difficulty: int = 2, question_type: str = "calculation") -> Question:
-        """
-        Generate percentile rank question
-        
-        Args:
-            difficulty: 1-5
-            question_type: "calculation" or "conceptual"
-        """
+        """Generate percentile rank question with proper formatting"""
         if question_type == "calculation":
             return self._generate_calculation_question(difficulty)
         else:
             return self._generate_conceptual_question(difficulty)
     
     def _generate_calculation_question(self, difficulty: int) -> Question:
-        """
-        Generate calculation question (2 marks)
-        Provincial Exam Question 38 pattern
-        """
-        # Select context
+        """Generate calculation question with proper answer formatting"""
+        
         context_template = random.choice(self.CALCULATION_CONTEXTS)
         
-        # Generate dataset
         if isinstance(context_template["dataset_size"], tuple):
             n = random.randint(*context_template["dataset_size"])
         else:
             n = context_template["dataset_size"]
         
         value_min, value_max = context_template["value_range"]
-        
-        # Generate sorted dataset
         dataset = sorted([random.randint(value_min, value_max) for _ in range(n)])
         
-        # Select target value (not highest or lowest)
         target_index = random.randint(int(n * 0.3), int(n * 0.8))
         target_value = dataset[target_index]
         
-        # Calculate b and PR
         b = sum(1 for x in dataset if x < target_value)
         pr = self.calc.percentile_rank(target_value, dataset)
         
-        # Format context
         context_str = self._populate_context(context_template, n)
+        dataset_str = self._format_dataset(dataset, context_template)
         
-        # Format dataset (display as table for readability)
-        dataset_str = self._format_dataset(dataset, context_template["id"])
+        # Format target value with unit if applicable
+        unit = context_template.get("unit", "")
+        if unit == "k":
+            target_display = f"${target_value}k"
+        elif unit == "g":
+            target_display = f"{target_value}g"
+        elif unit == "%":
+            target_display = f"{target_value}%"
+        else:
+            target_display = str(target_value)
         
-        # Build question
         question_text = f"""{context_str}
 
 {dataset_str}
 
-Calculate the percentile rank for a score of {target_value}."""
+Calculate the percentile rank for a {context_template['value_name']} of {target_display}."""
+        
+        # Format answer properly - Provincial exam accepts multiple formats
+        pr_int = int(pr)
+        formatted_answer = f"{pr_int}th percentile (or P{pr_int} or {pr_int})"
         
         # Build solution
         solution_steps = [
-            f"b = {b} (number of scores below {target_value})",
+            f"b = {b} (number of scores below {target_display})",
             f"n = {n} (total number of scores)",
             f"PR = (b/n) × 100",
             f"PR = ({b}/{n}) × 100",
-            f"PR = {pr:.0f}",
-            f"Therefore, {target_value} is at the {pr:.0f}th percentile"
+            f"PR = {pr:.1f}",
+            f"Answer: {pr_int}th percentile (or P{pr_int} or {pr_int})"
         ]
         
         return Question(
@@ -149,30 +146,26 @@ Calculate the percentile rank for a score of {target_value}."""
                 "dataset": dataset,
                 "target_value": target_value,
                 "b": b,
-                "n": n
+                "n": n,
+                "unit": unit
             },
-            answer=int(pr),
-            answer_format=AnswerFormat.NUMERIC,
+            answer=formatted_answer,
+            answer_format=AnswerFormat.TEXT,
             solution_steps=solution_steps,
             context_template_id=context_template["id"],
             requires_calculator=True
         )
     
     def _generate_conceptual_question(self, difficulty: int) -> Question:
-        """
-        Generate conceptual question (1 mark)
-        Provincial Exam Question 37 pattern
-        """
+        """Generate conceptual question"""
+        
         context_template = random.choice(self.CONCEPTUAL_CONTEXTS)
         
-        # Generate scenario
         if context_template["id"] == "entrance_exam":
             name = self.data.get_name(with_title=True)
             min_grade = random.choice([70, 75, 80])
             
-            # Last year: below required percentile, not accepted
             last_year_pr = random.randint(60, min_grade - 5)
-            # This year: higher percentile
             this_year_pr = random.randint(last_year_pr + 5, 95)
             
             context = context_template["template"].format(
@@ -187,13 +180,11 @@ This year their mark is in the {this_year_pr}th percentile.
 
 Justify why it cannot be determined if they will be accepted this year."""
             
-            answer = "It cannot be determined because percentile rank only indicates their position relative to other test-takers, not their actual grade. A higher percentile does not guarantee the minimum grade of {min_grade}% is achieved."
+            answer = f"It cannot be determined because percentile rank only indicates their position relative to other test-takers, not their actual grade. A higher percentile does not guarantee the minimum grade of {min_grade}% is achieved."
             
         else:  # job_ranking
             top_percent = random.choice([10, 15, 20, 25])
-            
             context = context_template["template"].format(top_percent=top_percent)
-            
             candidate_pr = random.randint(75, 90)
             
             question_text = f"""{context}
@@ -222,9 +213,7 @@ Explain whether this candidate will move to the next round."""
             mark_breakdown={"reasoning": 1.0},
             context=context,
             question_text=question_text,
-            given_data={
-                "context_template": context_template["id"]
-            },
+            given_data={"context_template": context_template["id"]},
             answer=answer,
             answer_format=AnswerFormat.TEXT,
             solution_steps=solution_steps,
@@ -232,18 +221,23 @@ Explain whether this candidate will move to the next round."""
             requires_calculator=False
         )
     
-    def _format_dataset(self, dataset: list, context_id: str) -> str:
-        """Format dataset for display"""
-        # Show in rows for readability
+    def _format_dataset(self, dataset: list, context_template: dict) -> str:
+        """Format dataset for display with units"""
         chunk_size = 5
         chunks = [dataset[i:i+chunk_size] for i in range(0, len(dataset), chunk_size)]
         
-        if "credit" in context_id or "property" in context_id:
-            # No extra formatting needed
-            formatted_chunks = [", ".join(map(str, chunk)) for chunk in chunks]
-        elif "produce" in context_id:
+        unit = context_template.get("unit", "")
+        context_id = context_template["id"]
+        
+        if unit == "g":
             # Add 'g' for grams
             formatted_chunks = [", ".join([f"{x}g" for x in chunk]) for chunk in chunks]
+        elif unit == "k":
+            # Add '$' and 'k' for thousands
+            formatted_chunks = [", ".join([f"${x}k" for x in chunk]) for chunk in chunks]
+        elif unit == "%":
+            # Add '%' for percentages
+            formatted_chunks = [", ".join([f"{x}%" for x in chunk]) for chunk in chunks]
         else:
             # Regular numbers
             formatted_chunks = [", ".join(map(str, chunk)) for chunk in chunks]
